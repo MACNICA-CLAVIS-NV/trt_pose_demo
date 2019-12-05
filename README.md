@@ -30,8 +30,7 @@ NVIDIA Pose Estimation Model Demo
 optional arguments:
   -h, --help            show this help message and exit
   --camera CAMERA_NUM, -c CAMERA_NUM
-                        Camera number, use any negative integer for MIPI-CSI
-                        camera
+                        Camera number, use any negative integer for MIPI-CSI camera
   --width WIDTH         Capture width
   --height HEIGHT       Capture height
   --fps FPS             Capture frame rate
