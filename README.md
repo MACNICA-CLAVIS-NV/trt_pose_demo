@@ -28,7 +28,7 @@ $ sudo jetson_clocks
 ```
 The following command starts this application.
 ```
-python3 trt_pose_app.py [-h] [--camera CAMERA_NUM] [--width WIDTH]
+$ python3 trt_pose_app.py [-h] [--camera CAMERA_NUM] [--width WIDTH]
                        [--height HEIGHT] [--fps FPS] [--qsize QSIZE] [--qinfo]
 
 NVIDIA Pose Estimation Model Demo
