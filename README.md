@@ -21,6 +21,7 @@ This application just displays pose estimation results of camera-captured image 
 1. Copy [the human_pose.json task description file](https://github.com/NVIDIA-AI-IOT/trt_pose/blob/master/tasks/human_pose/human_pose.json) to the application directory.
 
 ## Usage
+```
 usage: trt_pose_app.py [-h] [--camera CAMERA_NUM] [--width WIDTH]
                        [--height HEIGHT] [--fps FPS] [--qsize QSIZE] [--qinfo]
 
@@ -36,3 +37,4 @@ optional arguments:
   --fps FPS             Capture frame rate
   --qsize QSIZE         Capture queue size
   --qinfo               If set, print queue status information
+```
