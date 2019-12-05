@@ -13,10 +13,10 @@ This application just displays pose estimation results of camera-captured image 
 1. Install [NVIDIA-AI-IOT/torch2trt](https://github.com/NVIDIA-AI-IOT/torch2trt).
 1. Install [NVIDIA-AI-IOT/trt_pose](https://github.com/NVIDIA-AI-IOT/trt_pose).
 1. Install this application.
-```
-$ git clone https://github.com/MACNICA-CLAVIS-NV/trt_pose_demo
-$ cd trt_pose_demo
-```
+    ```
+    $ git clone https://github.com/MACNICA-CLAVIS-NV/trt_pose_demo
+    $ cd trt_pose_demo
+    ```
 1. Copy [the resnet18_baseline_att_224x224_A model file](https://github.com/NVIDIA-AI-IOT/trt_pose#models) to the application directory.
 1. Copy [the task description file](https://github.com/NVIDIA-AI-IOT/trt_pose/blob/master/tasks/human_pose/human_pose.json) to the application directory.
 
