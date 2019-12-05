@@ -12,3 +12,9 @@ This application just displays pose estimation results of camera-captured image 
 1. Install PyTorch and torchvision. Please refer to [this page](https://devtalk.nvidia.com/default/topic/1049071/jetson-nano/pytorch-for-jetson-nano-version-1-3-0-now-available/).
 1. Install [NVIDIA-AI-IOT/torch2trt](https://github.com/NVIDIA-AI-IOT/torch2trt).
 1. Install [NVIDIA-AI-IOT/trt_pose](https://github.com/NVIDIA-AI-IOT/trt_pose).
+1. Install this application.
+```
+$ git clone https://github.com/MACNICA-CLAVIS-NV/trt_pose_demo
+```
+
+## Usage
