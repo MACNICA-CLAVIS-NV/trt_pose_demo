@@ -18,6 +18,21 @@ This application just displays pose estimation results of camera-captured image 
     $ cd trt_pose_demo
     ```
 1. Copy [the resnet18_baseline_att_224x224_A model file](https://github.com/NVIDIA-AI-IOT/trt_pose#models) to the application directory.
-1. Copy [the task description file](https://github.com/NVIDIA-AI-IOT/trt_pose/blob/master/tasks/human_pose/human_pose.json) to the application directory.
+1. Copy [the human_pose.json task description file](https://github.com/NVIDIA-AI-IOT/trt_pose/blob/master/tasks/human_pose/human_pose.json) to the application directory.
 
 ## Usage
+usage: trt_pose_app.py [-h] [--camera CAMERA_NUM] [--width WIDTH]
+                       [--height HEIGHT] [--fps FPS] [--qsize QSIZE] [--qinfo]
+
+NVIDIA Pose Estimation Model Demo
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --camera CAMERA_NUM, -c CAMERA_NUM
+                        Camera number, use any negative integer for MIPI-CSI
+                        camera
+  --width WIDTH         Capture width
+  --height HEIGHT       Capture height
+  --fps FPS             Capture frame rate
+  --qsize QSIZE         Capture queue size
+  --qinfo               If set, print queue status information
