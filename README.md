@@ -21,8 +21,14 @@ This application just displays pose estimation results of camera-captured image 
 1. Copy [the human_pose.json task description file](https://github.com/NVIDIA-AI-IOT/trt_pose/blob/master/tasks/human_pose/human_pose.json) to the application directory.
 
 ## Usage
+- First, clock up your Jetson.
 ```
-usage: trt_pose_app.py [-h] [--camera CAMERA_NUM] [--width WIDTH]
+$ sudo nvpmodel -m 0
+$ sudo jetson_clocks
+```
+- The following command starts this application.
+```
+python3 trt_pose_app.py [-h] [--camera CAMERA_NUM] [--width WIDTH]
                        [--height HEIGHT] [--fps FPS] [--qsize QSIZE] [--qinfo]
 
 NVIDIA Pose Estimation Model Demo
