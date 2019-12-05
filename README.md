@@ -43,3 +43,11 @@ optional arguments:
   --qsize QSIZE         Capture queue size
   --qinfo               If set, print queue status information
 ```
+For MIPI-CSI camera, use any negative number as the camera number.
+```
+$ python3 trt_pose_app.py --camera -1 
+```
+For USB Web camera, if you camera is detected as /dev/video1, use 1 as the camera number.
+```
+$ python3 trt_pose_app.py --camera 1
+```
