@@ -30,6 +30,7 @@ The following command starts this application.
 ```
 $ python3 trt_pose_app.py [-h] [--camera CAMERA_NUM] [--width WIDTH]
                        [--height HEIGHT] [--fps FPS] [--qsize QSIZE] [--qinfo]
+                       [--mjpg]
 
 NVIDIA Pose Estimation Model Demo
 
@@ -42,6 +43,7 @@ optional arguments:
   --fps FPS             Capture frame rate
   --qsize QSIZE         Capture queue size
   --qinfo               If set, print queue status information
+  --mjpg                If set, capture video in motion jpeg format
 ```
 For MIPI-CSI camera, use any negative number as the camera number.
 ```
