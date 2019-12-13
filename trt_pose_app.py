@@ -115,6 +115,9 @@ def main():
     parser.add_argument('--qinfo', \
         action='store_true', \
         help='If set, print queue status information')
+    parser.add_argument('--mjpg', \
+        action='store_true', \
+        help='If set, capture video in motion jpeg format')
     args = parser.parse_args()
     
     fpsCounter = IntervalCounter(10)
@@ -122,8 +125,12 @@ def main():
     model = PoseCaptureModel( \
         WIDTH, HEIGHT, MODEL_WEIGHTS, OPTIMIZED_MODEL, TASK_DESC)
     
+    fourcc = None
+    if args.mjpg:
+        fourcc = 'MJPG'
     capture = ContinuousVideoCapture( \
-        args.camera, args.width, args.height, args.fps, args.qsize)   
+        args.camera, args.width, args.height, args.fps, args.qsize, fourcc) 
+  
     colorConv = ColorConvert(args.qsize, capture)
     resize = Resize(args.qsize, colorConv)
     preprocess = Preprocess(args.qsize, resize, model)    

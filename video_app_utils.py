@@ -140,7 +140,7 @@ class ContinuousVideoCapture(PipelineWorker):
     ! videoconvert \
     ! appsink'
     
-    def __init__(self, cameraId, width, height, fps=30, qsize=30):
+    def __init__(self, cameraId, width, height, fps=30, qsize=30, fourcc=None):
         '''
             Args:
                 cameraId(int): Camera device ID, if negative number specified,
@@ -149,6 +149,7 @@ class ContinuousVideoCapture(PipelineWorker):
                 height(int): Capture height
                 fps(int): Frame rate
                 qsize(int): Capture queue capacity
+                fourcc(str): Capture format FOURCC string
         '''
         
         super().__init__(qsize)
@@ -168,9 +169,12 @@ class ContinuousVideoCapture(PipelineWorker):
                 raise OSError('Camera %d could not be opened.' % (cameraId))
                 
             # Set the capture parameters
-            self.capture.set(cv2.CAP_PROP_FPS, fps)
             self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, width)
             self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+            if fourcc is not None:
+                self.capture.set(cv2.CAP_PROP_FOURCC, \
+                    cv2.VideoWriter_fourcc(*fourcc))
+            self.capture.set(cv2.CAP_PROP_FPS, fps)
         
          # Get the actual frame size
         self.width = self.capture.get(cv2.CAP_PROP_FRAME_WIDTH)
@@ -178,6 +182,7 @@ class ContinuousVideoCapture(PipelineWorker):
     
     def __del__(self):
         super().__del__()
+        self.capture.release()
         
     def getData(self):
         ret, frame = self.capture.read()
