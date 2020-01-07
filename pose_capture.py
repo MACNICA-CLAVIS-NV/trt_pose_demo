@@ -34,29 +34,21 @@ import torch2trt
 from torch2trt import TRTModule
 import cv2
 import torchvision.transforms as transforms
-from trt_pose.draw_objects import DrawObjects
+#from trt_pose.draw_objects import DrawObjects
+from draw_objects import DrawObjects
 from trt_pose.parse_objects import ParseObjects
 import time
 import argparse
 import numpy as np
 import PIL.Image
-
-#MODEL_WEIGHTS = 'resnet18_baseline_att_224x224_A_epoch_249.pth'
-#OPTIMIZED_MODEL = 'resnet18_baseline_att_224x224_A_epoch_249_trt.pth'
-#WIDTH = 224
-#HEIGHT = 224
-#INPUT_RES = (WIDTH, HEIGHT)
+import csv
+import datetime
 
 class PoseCaptureModel():
     
-    def __init__(self, inWidth, inHeight, modelFile, trtFile, taskDescFile):
-        self._initTrtModel(inWidth, inHeight, modelFile, trtFile, taskDescFile)
-    
-    def __del__(self):
-        pass
+    def __init__(self, inWidth, inHeight, \
+        modelFile, trtFile, taskDescFile, csv=False):
         
-    def _initTrtModel( \
-        self, inWidth, inHeight, modelFile, trtFile, taskDescFile):
         with open(taskDescFile, 'r') as f:
             human_pose = json.load(f)
 
@@ -89,6 +81,37 @@ class PoseCaptureModel():
         self.parse_objects = ParseObjects(topology)
         self.draw_objects = DrawObjects(topology)
         self.model_trt = model_trt
+
+        self.num_parts = num_parts
+        self.csv = csv
+
+        if self.csv:
+            self._initCsv(human_pose['keypoints'])
+
+    def __del__(self):
+        if self.csv:
+            self._closeCsv()
+
+    def _initCsv(self, keypoints):
+        fname = str(datetime.datetime.now()) + '.csv'
+        self.csvFile = open(fname, 'w')
+        self.csvWriter = csv.writer(self.csvFile)
+        labels = []
+        labels.append('timestamp')
+        labels.append('object_id')
+        labels_x = [pt + '_x' for pt in keypoints]
+        labels_y = [pt + '_y' for pt in keypoints]
+        labels_pt = labels_x + labels_y
+        labels_pt[::2] = labels_x
+        labels_pt[1::2] = labels_y
+        labels = labels + labels_pt
+        self.csvWriter.writerow(labels)
+
+    def _closeCsv(self):
+        if hasattr(self, 'csvFile'):
+            if self.csvFile is not None:
+                self.csvFile.close()
+                self.csvFile = None
         
     def preprocess(self, image):
         image = PIL.Image.fromarray(image)
@@ -103,4 +126,13 @@ class PoseCaptureModel():
     
     def postprocess(self, cmap, paf, image):
         counts, objects, peaks = self.parse_objects(cmap, paf)
-        self.draw_objects(image, counts, objects, peaks)
+        pt_lists = [[0] * (self.num_parts * 2 + 2) for i in range(int(counts[0]))]
+        dt = str(datetime.datetime.now())
+        for i in range(int(counts[0])):
+            pt_lists[i][0] = dt
+            pt_lists[i][1] = i
+        self.draw_objects(image, counts, objects, peaks, pt_lists)
+        if self.csv:
+            self.csvWriter.writerows(pt_lists)
+        
+

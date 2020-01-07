@@ -34,6 +34,7 @@ import cv2
 import time
 import numpy as np
 import argparse
+import datetime
 
 
 class PipelineWorker():
@@ -274,6 +275,7 @@ class ContinuousVideoProcess():
         self.qinfo = args.qinfo
         self.title = args.title
         self.pipeline = None
+        self.maxCaptures = args.max
 
     def scanPipeline(self):
         pipeline = []
@@ -292,22 +294,29 @@ class ContinuousVideoProcess():
     def execute(self):
         ''' execute video processing loop
         '''
+        count = 0
         self.startPipeline()
-        while True:
+        while count < self.maxCaptures:
             frame = self.getOutput()
             if self.qinfo:
                 print(self.pipeline)
             interval = self.fpsCounter.measure()
             if interval is not None:
                 fps = 1.0 / interval
-                fpsInfo = '{0}{1:.2f}   ESC to Quit'.format('FPS:', fps)
-                cv2.putText(frame, fpsInfo, (32, 32), \
+                dt = datetime.datetime.now().strftime('%H:%M:%S')
+                fpsInfo = '{0}{1:.2f} {2}{3}'.format('FPS:', fps, 'Time:', dt)
+                cv2.putText(frame, fpsInfo, (8, 32), \
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 1, cv2.LINE_AA)
-            cv2.imshow(self.title, frame)  
+            cv2.imshow(self.title, frame) 
+            count += 1 
             # Check if ESC key is pressed to terminate this application
             key = cv2.waitKey(1)
             if key == 27: # ESC
                 break
+            # Check if the window was closed
+            if cv2.getWindowProperty(self.title, cv2.WND_PROP_AUTOSIZE) < 0:
+                break
+        cv2.destroyAllWindows()
         self.stopPipeline()
 
     def getOutput(self):
@@ -328,7 +337,8 @@ class ContinuousVideoProcess():
         ContinuousVideoProcess.getSources(worker.destination, srcList)
 
     @staticmethod
-    def prepareArguments(parser, width=640, height=480):
+    def argumentParser(width=640, height=480):
+        parser = argparse.ArgumentParser(add_help=False)
         parser.add_argument('--camera', '-c', \
             type=int, default=0, metavar='CAMERA_NUM', \
             help='Camera number, use any negative integer for MIPI-CSI camera')
@@ -353,4 +363,8 @@ class ContinuousVideoProcess():
         parser.add_argument('--title', \
             type=str, default=parser.prog, metavar='TITLE', \
             help='Display window title')
+        parser.add_argument('--max', \
+            type=int, default=10000, metavar='MAX', \
+            help='Maximum number of capturing frames')
+        return parser
 

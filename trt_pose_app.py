@@ -103,7 +103,7 @@ class PoseEstimationProcess(ContinuousVideoProcess):
     def __init__(self, args):
         super().__init__(args)
         model = PoseCaptureModel( \
-            WIDTH, HEIGHT, MODEL_WEIGHTS, OPTIMIZED_MODEL, TASK_DESC)
+            WIDTH, HEIGHT, MODEL_WEIGHTS, OPTIMIZED_MODEL, TASK_DESC, args.csv)
         colorConv = ColorConvert(args.qsize, self.capture)
         resize = Resize(args.qsize, colorConv)
         preprocess = Preprocess(args.qsize, resize, model)    
@@ -113,8 +113,12 @@ class PoseEstimationProcess(ContinuousVideoProcess):
         
 def main():
     # Parse the command line parameters
-    parser = argparse.ArgumentParser(description='TRT Pose Demo')
-    ContinuousVideoProcess.prepareArguments(parser)
+    cvpParser = ContinuousVideoProcess.argumentParser()
+    parser = argparse.ArgumentParser( \
+        parents=[cvpParser], description='TRT Pose Demo')
+    parser.add_argument('--csv', \
+        action='store_true', \
+        help='If set, detected keypoints will be saved in a CSV file')
     args = parser.parse_args()
     # Create continuous video process and start it
     vproc = PoseEstimationProcess(args)
