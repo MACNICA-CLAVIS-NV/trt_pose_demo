@@ -4,7 +4,7 @@
 #
 # MIT License
 #
-# Copyright (c) 2019 MACNICA Inc.
+# Copyright (c) 2019, 2020 MACNICA Inc.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -25,6 +25,7 @@
 # SOFTWARE. 
 #
 
+
 import os
 import json
 import trt_pose.coco
@@ -34,7 +35,6 @@ import torch2trt
 from torch2trt import TRTModule
 import cv2
 import torchvision.transforms as transforms
-#from trt_pose.draw_objects import DrawObjects
 from draw_objects import DrawObjects
 from trt_pose.parse_objects import ParseObjects
 import time
@@ -43,36 +43,68 @@ import numpy as np
 import PIL.Image
 import csv
 import datetime
+import re
+import logging
+
+
+class PoseCaptureError(Exception):
+    pass
+
+
+class PoseCaptureDescError(PoseCaptureError):
+    pass
+    
+    
+class PoseCaptureModelError(PoseCaptureError):
+    pass
+
+
+class PoseCaptureCsvError(PoseCaptureError):
+    pass
+    
 
 class PoseCaptureModel():
     
-    def __init__(self, inWidth, inHeight, \
-        modelFile, trtFile, taskDescFile, csv=False):
+    def __init__(self, modelFile, taskDescFile, csv=0, csvPath='.'):
         
-        with open(taskDescFile, 'r') as f:
-            human_pose = json.load(f)
-
-        topology = trt_pose.coco.coco_category_to_topology(human_pose)
-        
+        # Load the task description
+        try:
+            with open(taskDescFile, 'r') as f:
+                human_pose = json.load(f)
+        except OSError:
+            raise PoseCaptureDescError
+        topology = trt_pose.coco.coco_category_to_topology(human_pose)    
         num_parts = len(human_pose['keypoints'])
         num_links = len(human_pose['skeleton'])
-
-        model = trt_pose.models.resnet18_baseline_att( \
-            num_parts, 2 * num_links).cuda().eval()
+        
+        # Load the base model
+        fbase = os.path.basename(modelFile)
+        func, self.inWidth, self.inHeight = \
+            PoseCaptureModel.getModelFuncName(fbase)
+        if func is None:
+            logging.fatal('Invalid model name: %s' % (fbase))
+            logging.fatal('Model name should be (.+_.+_att)_(\\d+)x(\\d+)_')
+            raise PoseCaptureModelError('Invalid model name: %s' % (fbase))
+        if not hasattr(trt_pose.models, func):
+            logging.fatal('Could not find base model function: %s' % (func))
+            raise PoseCaptureModelError( \
+                'Could not find base model function: %s' % (func))
+        func = 'trt_pose.models.' + func
+        trtFile = os.path.splitext(fbase)[0] + '_trt.pth'
+        logging.info('Loading base model from %s' % (func))
+        model = eval(func)(num_parts, 2 * num_links).cuda().eval()
         
         if os.path.exists(trtFile) :
-            print('Loading from TensorRT plan file ...', end='', flush=True)
+            logging.info('Loading model from TensorRT plan file ...')
             model_trt = TRTModule()
             model_trt.load_state_dict(torch.load(trtFile))
-            print(' done')
         else:
-            print('Optimizing model for TensorRT ...', end='', flush=True)
+            logging.info('Optimizing model for TensorRT ...')
             model.load_state_dict(torch.load(modelFile))
-            data = torch.zeros((1, 3, inHeight, inWidth)).cuda()
+            data = torch.zeros((1, 3, self.inHeight, self.inWidth)).cuda()
             model_trt = torch2trt.torch2trt( \
                 model, [data], fp16_mode=True, max_workspace_size=1<<25)
             torch.save(model_trt.state_dict(), trtFile)
-            print(' done')
         
         self.mean = torch.Tensor([0.485, 0.456, 0.406]).cuda()
         self.std = torch.Tensor([0.229, 0.224, 0.225]).cuda()
@@ -81,19 +113,26 @@ class PoseCaptureModel():
         self.parse_objects = ParseObjects(topology)
         self.draw_objects = DrawObjects(topology)
         self.model_trt = model_trt
-
         self.num_parts = num_parts
         self.csv = csv
+        self.count = 0
 
-        if self.csv:
-            self._initCsv(human_pose['keypoints'])
+        if self.csv > 0:
+            try:
+                self._initCsv(human_pose['keypoints'], csvPath)
+            except OSError:
+                raise PoseCaptureCsvError
 
     def __del__(self):
-        if self.csv:
+        if hasattr(self, 'csv') and self.csv > 0:
             self._closeCsv()
 
-    def _initCsv(self, keypoints):
+    def _initCsv(self, keypoints, csvPath):
+        if not os.path.exists(csvPath):
+            os.mkdir(csvPath)
         fname = str(datetime.datetime.now()) + '.csv'
+        fname = os.path.join(csvPath, fname)
+        logging.info('CSV file: %s' % (fname))
         self.csvFile = open(fname, 'w')
         self.csvWriter = csv.writer(self.csvFile)
         labels = []
@@ -126,13 +165,32 @@ class PoseCaptureModel():
     
     def postprocess(self, cmap, paf, image):
         counts, objects, peaks = self.parse_objects(cmap, paf)
-        pt_lists = [[0] * (self.num_parts * 2 + 2) for i in range(int(counts[0]))]
+        pt_lists = \
+            [[0] * (self.num_parts * 2 + 2) for i in range(int(counts[0]))]
         dt = str(datetime.datetime.now())
         for i in range(int(counts[0])):
             pt_lists[i][0] = dt
             pt_lists[i][1] = i
         self.draw_objects(image, counts, objects, peaks, pt_lists)
-        if self.csv:
+        if self.csv > 0:
             self.csvWriter.writerows(pt_lists)
+        self.count += 1
+        if self.csv <= 0:
+            return True
+        elif self.count >= self.csv:
+            logging.info('CSV recored was reached to the max value %d' \
+                % (self.csv))
+            return False
+        else:
+            return True
+            
+    def getInputRes(self):
+        return (self.inWidth, self.inHeight)
         
-
+    @staticmethod
+    def getModelFuncName(model_file):
+        result = re.search('(.+_.+_att)_(\d+)x(\d+)_', model_file)
+        if result is None:
+            return (None, None, None)
+        else:
+            return (result[1], int(result[2]), int(result[3]))

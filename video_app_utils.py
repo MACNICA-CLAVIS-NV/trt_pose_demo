@@ -4,7 +4,7 @@
 #
 # MIT License
 #
-# Copyright (c) 2019 MACNICA Inc.
+# Copyright (c) 2019, 2020 MACNICA Inc.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -28,6 +28,7 @@
 '''A collection of utility classes for video applications.
 '''
 
+import sys
 import queue
 import threading
 import cv2
@@ -35,6 +36,19 @@ import time
 import numpy as np
 import argparse
 import datetime
+import logging
+
+
+class VideoAppUtilsError(Exception):
+    pass
+
+
+class VideoAppUtilsEosError(VideoAppUtilsError):
+    pass
+        
+
+class VideoAppUtilsDeviceError(VideoAppUtilsError):
+    pass
 
 
 class PipelineWorker():
@@ -58,7 +72,7 @@ class PipelineWorker():
         thread: Worker thread runs the _run instance method.
     '''
     
-    def __init__(self, qsize, source=None):
+    def __init__(self, qsize, source=None, drop=True):
         '''
         Args:
             qsize(int): Output queue capacity
@@ -69,10 +83,12 @@ class PipelineWorker():
         self.source = source
         if self.source is not None:
             self.source.destination = self
+        self.drop = drop
         self.destination = None
         self.sem = threading.Semaphore(1)
         self.flag = False
         self.numDrops = 0
+        self._error = False
     
     def __del__(self):
         pass
@@ -82,12 +98,12 @@ class PipelineWorker():
         
     def process(self, srcData):
         '''Data processing(producing) method called in thread loop.
-        Derived class should implemens this method.
+        Derived classes should implement this method.
         
         Args:
             srcData: Source data 
         '''
-        return (True, None)
+        return (False, None)
         
     def getData(self):
         '''Returns a output to data consumer.
@@ -97,31 +113,57 @@ class PipelineWorker():
         else:
             return self.source.get()
         
-    def _run(self):
+    def __run(self):
+        logging.info('%s thread started' % (self.__class__.__name__))
         with self.sem:
             self.flag = True
         while True:
             with self.sem:
                 if self.flag == False:
                     break
-            src = self.getData()
-            ret, dat = self.process(src)
-            if ret == False:
-                break
-            if self.queue.full():
+            dat = None
+            try:
+                src = self.getData()
+            except VideoAppUtilsEosError:
+                self._error = True
+                logging.info('End of Stream detected')
+            else:
+                try:
+                    ret, dat = self.process(src)
+                    if ret == False:
+                        self._error = True
+                        dat = None
+                        logging.info('Processing error')
+                except Exception as e:
+                    self._error = True
+                    dat = None
+                    logging.critical(e)
+            if self.drop and self.queue.full():
                 self.queue.get(block=True)
                 self.numDrops += 1
             self.queue.put(dat)
+        logging.info('%s thread terminated' % (self.__class__.__name__))
                
+    def clear(self):
+        try:
+            while True:
+                self.queue.get(block=False)
+        except queue.Empty:
+            return
+    
     def start(self): 
         '''Starts the worker thread.
         '''     
-        self.thread = threading.Thread(target=self._run)
+        self.thread = threading.Thread(target=self.__run)
         self.thread.start()
         
     def get(self):
         '''Gets a output.
         '''
+        if self._error:
+            logging.info('VideoAppUtilsEosError')
+            raise VideoAppUtilsEosError
+            return None
         return self.queue.get(block=True)
         
     def stop(self):
@@ -129,6 +171,7 @@ class PipelineWorker():
         '''
         with self.sem:
             self.flag = False
+        self.clear()
         self.thread.join()
         
     def qsize(self):
@@ -145,12 +188,15 @@ class ContinuousVideoCapture(PipelineWorker):
     '''
 
     GST_STR_CSI = 'nvarguscamerasrc \
-    ! video/x-raw(memory:NVMM), width=(int)%d, height=(int)%d, format=(string)NV12, framerate=(fraction)%d/1 \
-    ! nvvidconv ! video/x-raw, width=(int)%d, height=(int)%d, format=(string)BGRx \
+    ! video/x-raw(memory:NVMM), width=(int)%d, height=(int)%d, \
+    format=(string)NV12, framerate=(fraction)%d/1 \
+    ! nvvidconv \
+    ! video/x-raw, width=(int)%d, height=(int)%d, format=(string)BGRx \
     ! videoconvert \
     ! appsink'
     
-    def __init__(self, cameraId, width, height, fps=None, qsize=30, fourcc=None):
+    def __init__(self, cameraId, width, height, \
+        fps=None, qsize=30, fourcc=None):
         '''
             Args:
                 cameraId(int): Camera device ID, if negative number specified,
@@ -170,13 +216,15 @@ class ContinuousVideoCapture(PipelineWorker):
                 % (width, height, fps, width, height)
             self.capture = cv2.VideoCapture(gstCmd, cv2.CAP_GSTREAMER)
             if self.capture.isOpened() is False:
-                raise OSError('CSI camera could not be opened.')
+                raise VideoAppUtilsDeviceError( \
+                    'CSI camera could not be opened.')
         else:
             # USB camera
             # Open the camera device
             self.capture = cv2.VideoCapture(cameraId)
             if self.capture.isOpened() is False:
-                raise OSError('Camera %d could not be opened.' % (cameraId))
+                raise VideoAppUtilsDeviceError( \
+                    'Camera %d could not be opened.' % (cameraId))
                 
             # Set the capture parameters
             self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, width)
@@ -187,7 +235,8 @@ class ContinuousVideoCapture(PipelineWorker):
             if fps is not None:
                 self.capture.set(cv2.CAP_PROP_FPS, fps)
         
-         # Get the actual frame size
+        # Get the actual frame size
+        # Not work for OpenCV 4.1
         self.width = self.capture.get(cv2.CAP_PROP_FRAME_WIDTH)
         self.height = self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT)
     
@@ -197,10 +246,84 @@ class ContinuousVideoCapture(PipelineWorker):
         
     def getData(self):
         ret, frame = self.capture.read()
-        return (ret, frame)
+        if ret == False:
+            raise VideoAppUtilsEosError
+        return frame
         
     def process(self, srcData):
-        return srcData
+        return (True, srcData)
+
+
+class VideoDecoder(PipelineWorker):
+    
+    GST_STR_DEC_H264 = 'filesrc location=%s \
+    ! qtdemux name=demux demux.video_0 \
+    ! queue \
+    ! h264parse \
+    ! omxh264dec \
+    ! nvvidconv \
+    ! video/x-raw, format=(string)BGRx \
+    ! videoconvert \
+    ! appsink'
+    
+    GST_STR_DEC_H265 = 'filesrc location=%s \
+    ! qtdemux name=demux demux.video_0 \
+    ! queue \
+    ! h265parse \
+    ! omxh265dec \
+    ! nvvidconv \
+    ! video/x-raw, format=(string)BGRx \
+    ! videoconvert \
+    ! appsink'
+
+    def __init__(self, file, qsize=30, repeat=False, h265=False):
+        '''
+            Args:
+                file(str): 
+                qsize(int): Capture queue capacity
+        '''
+        
+        super().__init__(qsize)
+        self.repeat = repeat
+        if h265:
+            self.gstCmd = VideoDecoder.GST_STR_DEC_H265 % (file)
+        else:
+            self.gstCmd = VideoDecoder.GST_STR_DEC_H264 % (file)
+        self.capture = cv2.VideoCapture(self.gstCmd, cv2.CAP_GSTREAMER)
+        if self.capture.isOpened() == False:
+            raise VideoAppUtilsEosError('%s could not be opened.' % (file))
+        
+        # Get the frame size
+        self.width = self.capture.get(cv2.CAP_PROP_FRAME_WIDTH)
+        self.height = self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        self.frames = 0
+    
+    def __del__(self):
+        super().__del__()
+        self.capture.release()
+        
+    def getData(self):
+        ret, frame = self.capture.read()
+        if ret == False:
+            if self.repeat:
+                # Reopen the video file
+                self.capture.release()
+                self.capture = cv2.VideoCapture(self.gstCmd, cv2.CAP_GSTREAMER)
+                if self.capture.isOpened() == False:
+                    raise VideoAppUtilsEosError( \
+                        '%s could not be re-opened.' % (file))
+                    frame = None
+                ret, frame = self.capture.read()
+                if ret == False:
+                    raise VideoAppUtilsEosError
+            else:
+                logging.info('End of stream at frame %d' % (self.frames))
+                raise VideoAppUtilsEosError
+        self.frames += 1
+        return frame
+        
+    def process(self, srcData):
+        return (True, srcData)
 
 
 class IntervalCounter():
@@ -262,20 +385,28 @@ class ContinuousVideoProcess():
         Args:
             args(argparse.Namespace): video capture command-line arguments
         '''
-        fourcc = None
-        if args.mjpg:
-            fourcc = 'MJPG'
-        if args.fps < 0:
-            fps = None
+        if args.src_file is not None:
+            self.capture = VideoDecoder( \
+                args.src_file, args.qsize, args.repeat, args.h265)
         else:
-            fps = args.fps
-        self.capture = ContinuousVideoCapture( \
-            args.camera, args.width, args.height, fps, args.qsize, fourcc)
+            fourcc = None
+            if args.mjpg:
+                fourcc = 'MJPG'
+            if args.fps < 0:
+                fps = None
+            else:
+                fps = args.fps
+            self.capture = ContinuousVideoCapture( \
+                args.camera, args.width, args.height, fps, args.qsize, fourcc)
         self.fpsCounter = IntervalCounter(10)
         self.qinfo = args.qinfo
         self.title = args.title
+        self.nodrop = args.nodrop
         self.pipeline = None
-        self.maxCaptures = args.max
+        
+    def __del__(self):
+        cv2.destroyAllWindows()
+        self.stopPipeline()
 
     def scanPipeline(self):
         pipeline = []
@@ -285,30 +416,33 @@ class ContinuousVideoProcess():
     def startPipeline(self):
         self.scanPipeline()
         for worker in self.pipeline:
+            if self.nodrop:
+                worker.drop = False
             worker.start()
 
     def stopPipeline(self):
-        for worker in self.pipeline:
-            worker.stop()
+        if hasattr(self, 'pipeline') and self.pipeline is not None:
+            for worker in self.pipeline:
+                worker.stop()
 
     def execute(self):
         ''' execute video processing loop
         '''
-        count = 0
         self.startPipeline()
-        while count < self.maxCaptures:
+        while True:
             frame = self.getOutput()
+            if frame is None:
+                break
             if self.qinfo:
                 print(self.pipeline)
             interval = self.fpsCounter.measure()
             if interval is not None:
                 fps = 1.0 / interval
-                dt = datetime.datetime.now().strftime('%H:%M:%S')
-                fpsInfo = '{0}{1:.2f} {2}{3}'.format('FPS:', fps, 'Time:', dt)
+                dt = datetime.datetime.now().strftime('%F %T')
+                fpsInfo = '{0}{1:.2f} {2}'.format('FPS:', fps, dt)
                 cv2.putText(frame, fpsInfo, (8, 32), \
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 1, cv2.LINE_AA)
-            cv2.imshow(self.title, frame) 
-            count += 1 
+            cv2.imshow(self.title, frame)  
             # Check if ESC key is pressed to terminate this application
             key = cv2.waitKey(1)
             if key == 27: # ESC
@@ -325,8 +459,12 @@ class ContinuousVideoProcess():
         Returns:
             Output image
         '''
-        frame = (self.pipeline[0]).get()
-        return frame
+        try:
+            frame = (self.pipeline[0]).get()
+        except VideoAppUtilsEosError:
+            return None
+        else:
+            return frame
 
     @staticmethod
     def getSources(worker, srcList):
@@ -337,22 +475,32 @@ class ContinuousVideoProcess():
         ContinuousVideoProcess.getSources(worker.destination, srcList)
 
     @staticmethod
-    def argumentParser(width=640, height=480):
+    def argumentParser(**kwargs):
         parser = argparse.ArgumentParser(add_help=False)
         parser.add_argument('--camera', '-c', \
-            type=int, default=0, metavar='CAMERA_NUM', \
-            help='Camera number, use any negative integer for MIPI-CSI camera')
+            type=int, \
+            default=0, \
+            metavar='CAMERA_NUM', \
+            help='Camera number, use any negative integer for MIPI-CSI')
         parser.add_argument('--width', \
-            type=int, default=width, metavar='WIDTH', \
+            type=int, \
+            default=640, \
+            metavar='WIDTH', \
             help='Capture width')
         parser.add_argument('--height', \
-            type=int, default=height, metavar='HEIGHT', \
+            type=int, \
+            default=480, \
+            metavar='HEIGHT', \
             help='Capture height')
         parser.add_argument('--fps', \
-            type=int, default=-1, metavar='FPS', \
+            type=int, \
+            default=-1, \
+            metavar='FPS', \
             help='Capture frame rate')
         parser.add_argument('--qsize', \
-            type=int, default=1, metavar='QSIZE', \
+            type=int, \
+            default=1, \
+            metavar='QSIZE', \
             help='Capture queue size')
         parser.add_argument('--qinfo', \
             action='store_true', \
@@ -361,10 +509,36 @@ class ContinuousVideoProcess():
             action='store_true', \
             help='If set, capture video in motion jpeg format')
         parser.add_argument('--title', \
-            type=str, default=parser.prog, metavar='TITLE', \
-            help='Display window title')
-        parser.add_argument('--max', \
-            type=int, default=10000, metavar='MAX', \
-            help='Maximum number of capturing frames')
+            type=str, \
+            default=parser.prog, \
+            metavar='TITLE', \
+            help='Window title')
+        parser.add_argument('--nodrop', \
+            action='store_true', \
+            help='If set, disable frame drop feature')
+        parser.add_argument('--repeat', \
+            action='store_true', \
+            help='If set, repeat video decoding')
+        parser.add_argument('--h265', \
+            action='store_true', \
+            help='If set, the specified video file will be assumed as H.265. \
+                Otherwise, assumed as H.264')
+        parser.add_argument('src_file', \
+            type=str, \
+            metavar='SRC_FILE', \
+            nargs='?', \
+            help='Source video file')
+        parser.set_defaults(**kwargs)
         return parser
+
+
+def player():
+    # Parse the command line parameters
+    cvpParser = ContinuousVideoProcess.argumentParser(title='Player')
+    parser = argparse.ArgumentParser( \
+        parents=[cvpParser], description='Simple Video/Camera Player')
+    args = parser.parse_args()
+    # Create continuous video process and start it
+    vproc = ContinuousVideoProcess(args)
+    vproc.execute()
 

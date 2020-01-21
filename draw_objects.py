@@ -42,12 +42,14 @@ class DrawObjects(object):
                 k = int(obj[j])
                 if k >= 0:
                     peak = normalized_peaks[0][j][k]
-                    x = round(float(peak[1]) * width)
-                    y = round(float(peak[0]) * height)
+                    xx = float(peak[1]) * width
+                    x = round(xx)
+                    yy = float(peak[0]) * height
+                    y = round(yy)
                     cv2.circle(image, (x, y), 3, color, 2)
                     if pt_lists is not None:
-                        pt_lists[i][j * 2 + 2] = x
-                        pt_lists[i][j * 2 + 3] = y
+                        pt_lists[i][j * 2 + 2] = xx
+                        pt_lists[i][j * 2 + 3] = yy
 
             for k in range(K):
                 color = (255, 255, 255)

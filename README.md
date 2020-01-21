@@ -30,24 +30,37 @@ The following command starts this application.
 ```
 $ python3 trt_pose_app.py [-h] [--camera CAMERA_NUM] [--width WIDTH]
                        [--height HEIGHT] [--fps FPS] [--qsize QSIZE] [--qinfo]
-                       [--mjpg] [--title TITLE] [--max MAX] [--csv]
+                       [--mjpg] [--title TITLE] [--nodrop] [--repeat] [--h265]
+                       [--model MODEL] [--task TASK_DESC] [--csv MAX_CSV_REC]
+                       [--csvpath CSV_PATH] [--verbose]
+                       [SRC_FILE]
 
 TRT Pose Demo
+
+positional arguments:
+  SRC_FILE              Source video file
 
 optional arguments:
   -h, --help            show this help message and exit
   --camera CAMERA_NUM, -c CAMERA_NUM
                         Camera number, use any negative integer for MIPI-CSI
-                        camera
   --width WIDTH         Capture width
   --height HEIGHT       Capture height
   --fps FPS             Capture frame rate
   --qsize QSIZE         Capture queue size
   --qinfo               If set, print queue status information
   --mjpg                If set, capture video in motion jpeg format
-  --title TITLE         Display window title
-  --max MAX             Maximum number of capturing frames
-  --csv                 If set, detected keypoints will be saved in a CSV file
+  --title TITLE         Window title
+  --nodrop              If set, disable frame drop feature
+  --repeat              If set, repeat video decoding
+  --h265                If set, the specified video file will be assumed as
+                        H.265. Otherwise, assumed as H.264
+  --model MODEL         Model weight file
+  --task TASK_DESC      Task description file
+  --csv MAX_CSV_REC     Maximum CSV records
+  --csvpath CSV_PATH    Directory path to save CSV files
+  --verbose             If set, print debug message
+
 ```
 For MIPI-CSI camera, use any negative number as the camera number.
 ```

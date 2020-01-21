@@ -4,7 +4,7 @@
 #
 # MIT License
 #
-# Copyright (c) 2019 MACNICA Inc.
+# Copyright (c) 2019, 2020 MACNICA Inc.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -25,22 +25,17 @@
 # SOFTWARE. 
 #
 
+
 import sys
+import os
 import cv2
-from pose_capture import PoseCaptureModel
-from video_app_utils import PipelineWorker
-from video_app_utils import ContinuousVideoProcess
+import pose_capture
+import video_app_utils
 import argparse
-
-WIDTH = 224
-HEIGHT = 224
-INPUT_RES = (WIDTH, HEIGHT)
-MODEL_WEIGHTS = 'resnet18_baseline_att_224x224_A_epoch_249.pth'
-OPTIMIZED_MODEL = 'resnet18_baseline_att_224x224_A_epoch_249_trt.pth'
-TASK_DESC = 'human_pose.json'
+import logging
 
 
-class ColorConvert(PipelineWorker):
+class ColorConvert(video_app_utils.PipelineWorker):
     
     def __init__(self, qsize, source):
         super().__init__(qsize, source)
@@ -51,18 +46,38 @@ class ColorConvert(PipelineWorker):
         return (True, (frame, orgFrame))
 
         
-class Resize(PipelineWorker):
+class Resize(video_app_utils.PipelineWorker):
 
-    def __init__(self, qsize, source):
+    def __init__(self, qsize, source, inRes):
         super().__init__(qsize, source)
+        self.inRes = inRes
         
     def process(self, srcData):
         frame, orgFrame = srcData
-        frame = cv2.resize(frame, INPUT_RES, interpolation=cv2.INTER_NEAREST)
+        frame = cv2.resize(frame, self.inRes, interpolation=cv2.INTER_NEAREST)
         return (True, (frame, orgFrame))
+        
+
+'''       
+class ResizeGpu(video_app_utils.PipelineWorker):
+
+    def __init__(self, qsize, source, inRes):
+        super().__init__(qsize, source)
+        self.inRes = inRes
+        
+    def process(self, srcData):
+        frame, orgFrame = srcData
+        srcGpu = cv2.cuda_GpuMat()
+        dstGpu = cv2.cuda_GpuMat()
+        srcGpu.upload(frame)
+        dstGpu = cv2.cuda.resize( \
+            srcGpu, self.inRes, interpolation=cv2.INTER_NEAREST)
+        frame = dstGpu.download()
+        return (True, (frame, orgFrame))
+'''
 
 
-class Preprocess(PipelineWorker):
+class Preprocess(video_app_utils.PipelineWorker):
     
     def __init__(self, qsize, source, model):
         super().__init__(qsize, source)
@@ -74,7 +89,7 @@ class Preprocess(PipelineWorker):
         return (True, (frame, orgFrame))
 
         
-class Inference(PipelineWorker):
+class Inference(video_app_utils.PipelineWorker):
     
     def __init__(self, qsize, source, model):
         super().__init__(qsize, source)
@@ -86,26 +101,34 @@ class Inference(PipelineWorker):
         return (True, (cmap, paf, orgFrame))
 
         
-class Postprocess(PipelineWorker):
+class Postprocess(video_app_utils.PipelineWorker):
     
     def __init__(self, qsize, source, model):
         super().__init__(qsize, source)
         self.model = model
+        self.cont = True
         
     def process(self, srcData):
         cmap, paf, orgFrame = srcData
-        self.model.postprocess(cmap, paf, orgFrame)
+        if not self.cont:
+            return (True, None)
+        self.cont = self.model.postprocess(cmap, paf, orgFrame)
         return (True, orgFrame)
 
 
-class PoseEstimationProcess(ContinuousVideoProcess):
+class PoseEstimationProcess(video_app_utils.ContinuousVideoProcess):
 
     def __init__(self, args):
+        '''
+        [Capture]->[Color Convert]->[Resize]->[Pre-process]->
+        ->[Infer]->[Post-process]->[Display]
+        '''
         super().__init__(args)
-        model = PoseCaptureModel( \
-            WIDTH, HEIGHT, MODEL_WEIGHTS, OPTIMIZED_MODEL, TASK_DESC, args.csv)
+        model = pose_capture.PoseCaptureModel( \
+            args.model, args.task, args.csv, args.csvpath)
+        inRes = model.getInputRes()
         colorConv = ColorConvert(args.qsize, self.capture)
-        resize = Resize(args.qsize, colorConv)
+        resize = Resize(args.qsize, colorConv, inRes)
         preprocess = Preprocess(args.qsize, resize, model)    
         inference = Inference(args.qsize, preprocess, model)  
         postprocess = Postprocess(args.qsize, inference, model)
@@ -113,16 +136,45 @@ class PoseEstimationProcess(ContinuousVideoProcess):
         
 def main():
     # Parse the command line parameters
-    cvpParser = ContinuousVideoProcess.argumentParser()
+    cvpParser = video_app_utils.ContinuousVideoProcess.argumentParser( \
+        width=800, height=600)
     parser = argparse.ArgumentParser( \
         parents=[cvpParser], description='TRT Pose Demo')
+    parser.add_argument('--model', \
+        type=str, \
+        default='resnet18_baseline_att_224x224_A_epoch_249.pth', \
+        metavar='MODEL', \
+        help='Model weight file')
+    parser.add_argument('--task', \
+        type=str, \
+        default='human_pose.json', \
+        metavar='TASK_DESC', \
+        help='Task description file')
     parser.add_argument('--csv', \
+        type=int, \
+        default=0, \
+        metavar='MAX_CSV_REC', \
+        help='Maximum CSV records')
+    parser.add_argument('--csvpath', \
+        type=str, \
+        default=os.path.join('.', 'csv'), \
+        metavar='CSV_PATH', \
+        help='Directory path to save CSV files')
+    parser.add_argument('--verbose', \
         action='store_true', \
-        help='If set, detected keypoints will be saved in a CSV file')
+        help='If set, print debug message')
     args = parser.parse_args()
+    # Set the logging level
+    if args.verbose:
+        logging.basicConfig(level=logging.DEBUG)
     # Create continuous video process and start it
-    vproc = PoseEstimationProcess(args)
-    vproc.execute()
+    try :
+        vproc = PoseEstimationProcess(args)
+        vproc.execute()
+    except pose_capture.PoseCaptureError as err:
+        print('Application error: %s' % (str(err)))
+    except video_app_utils.VideoAppUtilsError as err:
+        print('Video application framewrok error: %s' % (str(err)))
     
 
 if __name__ == '__main__':
