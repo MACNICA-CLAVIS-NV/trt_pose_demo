@@ -78,3 +78,7 @@ To use the densenet121_baseline_att_256x256_B_epoch_160.pth pre-trained model wh
 ```
 $ python3 trt_pose_app.py --camera 0 --model densenet121_baseline_att_256x256_B_epoch_160.pth
 ```
+This application can accept not only camera capture but also H.264 movie file as input.
+```
+$ python3 trt_pose_app.py test.mov
+```
