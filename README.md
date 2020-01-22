@@ -2,7 +2,7 @@
 A Demo Application for NVIDIA TensorRT Pose Estimation
 
 ## What does this application do?
-This application just displays pose estimation results of camera-captured image with [NVIDIA TensorRT pose estimation](https://github.com/NVIDIA-AI-IOT/trt_pose).
+This application just displays pose estimation results for camera-captured video or H.264/H.265 video file with [NVIDIA TensorRT pose estimation](https://github.com/NVIDIA-AI-IOT/trt_pose). This application also has a capability to save the results in a CSV file.
 
 ## Prerequisites
 - NVIDIA Jetson Nano/TX2/AGX Xavier Developer Kit with JetPack installed
