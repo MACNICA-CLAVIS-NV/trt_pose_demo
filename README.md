@@ -70,3 +70,7 @@ For USB Web camera, if you camera is detected as /dev/video1, use 1 as the camer
 ```
 $ python3 trt_pose_app.py --camera 1
 ```
+To get a CSV output, please use the **--csv** option with the maximum capture frames. You can specify the directory to hold the CSV file with the **--csvpath** option.
+```
+$ python3 trt_pose_app.py --camera 0 --csv 1000 --csvpath ./logs
+```
