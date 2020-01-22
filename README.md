@@ -74,3 +74,7 @@ To get a CSV output, please use the **--csv** option with the maximum capture fr
 ```
 $ python3 trt_pose_app.py --camera 0 --csv 1000 --csvpath ./logs
 ```
+To use the densenet121_baseline_att_256x256_B_epoch_160.pth pre-trained model which is also released at [the resnet18_baseline_att_224x224_A model file](https://github.com/NVIDIA-AI-IOT/trt_pose#models), use the **--model** option.
+```
+$ python3 trt_pose_app.py --camera 0 --model densenet121_baseline_att_256x256_B_epoch_160.pth
+```
