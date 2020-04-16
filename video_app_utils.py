@@ -212,6 +212,8 @@ class ContinuousVideoCapture(PipelineWorker):
         
         if cameraId < 0:
             # CSI camera
+            if fps is None:
+                fps = 30
             gstCmd = ContinuousVideoCapture.GST_STR_CSI \
                 % (width, height, fps, width, height)
             self.capture = cv2.VideoCapture(gstCmd, cv2.CAP_GSTREAMER)
